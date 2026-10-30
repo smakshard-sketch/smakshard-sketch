@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adresse confirmée · ÉCHÉANCE</title>
+<meta name="robots" content="noindex">
+<style>
+:root{--bg:#EEF3FF;--card:#fff;--text:#0E1A3A;--muted:#4A5778;--brand:#2A4BD7;--ok:#0B7A4B}
+@media (prefers-color-scheme:dark){:root{--bg:#0E1A3A;--card:#16264F;--text:#F2F5FF;--muted:#B5C0DD;--brand:#7F9BFF;--ok:#5EDBA0}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:420px;width:100%;background:var(--card);border-radius:20px;padding:28px 22px;text-align:center;box-shadow:0 8px 30px rgba(14,26,58,.12)}
+.ok{font-size:48px;line-height:1}
+h1{font-size:22px;margin:12px 0 8px}
+p{color:var(--muted);margin:8px 0}
+.err{color:#B3261E}
+b{color:var(--ok)}
+form{text-align:left;margin-top:14px}
+label{display:block;font-size:14px;margin-bottom:6px;color:var(--muted)}
+input{width:100%;padding:12px;border-radius:12px;border:1px solid var(--muted);background:transparent;color:var(--text);font:inherit}
+button{width:100%;margin-top:12px;padding:13px;border:0;border-radius:12px;background:#2A4BD7;color:#fff;font:inherit;font-weight:700;cursor:pointer}
+button:disabled{opacity:.6}
+</style>
+</head>
+<body>
+<main>
+  <div class="ok" id="icon">✅</div>
+  <h1 id="title">Adresse confirmée</h1>
+  <p id="msg"><b>Ton compte ÉCHÉANCE est prêt.</b></p>
+  <form id="resetForm" hidden autocomplete="off">
+    <label for="np">Nouveau mot de passe (8 caractères minimum)</label>
+    <input id="np" type="password" minlength="8" maxlength="128" autocomplete="new-password">
+    <button type="submit" id="go">Enregistrer</button>
+    <p id="resetMsg" role="status"></p>
+  </form>
+  <p id="next">Retourne dans l'application, ouvre Paramètres → Mon compte, puis touche « Se connecter » avec ton adresse e-mail et ton mot de passe.</p>
+</main>
+<script>
+var URL_ = 'https://oydwnxpejqwdngkylgwc.supabase.co', KEY = 'sb_publishable_u6bfuVBc5gkXHJ0XUTkqYQ_kB6DzzIH';
+var $ = function (i) { return document.getElementById(i); };
+var q = (location.hash + '&' + location.search).replace(/[#?]/g, '&');
+var p = new URLSearchParams(q);
+function fail(title, text) {
+  $('icon').textContent = '⚠️'; $('title').textContent = title;
+  var m = $('msg'); m.className = 'err'; m.textContent = text;
