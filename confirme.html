@@ -44,3 +44,30 @@ var p = new URLSearchParams(q);
 function fail(title, text) {
   $('icon').textContent = '⚠️'; $('title').textContent = title;
   var m = $('msg'); m.className = 'err'; m.textContent = text;
+}
+if (p.get('error') || p.get('error_code') || p.get('error_description')) {
+  fail('Lien expiré ou déjà utilisé', "Ce lien n'est plus valable.");
+  $('next').textContent = "Essaie de te connecter dans l'application : si ton adresse est déjà confirmée, cela fonctionnera. Sinon, demande un nouveau mail depuis l'application.";
+} else if (p.get('type') === 'recovery' && p.get('access_token')) {
+  $('icon').textContent = '🔑'; $('title').textContent = 'Nouveau mot de passe';
+  $('msg').textContent = 'Choisis ton nouveau mot de passe.';
+  $('next').textContent = '';
+  $('resetForm').hidden = false;
+  $('resetForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var pw = $('np').value, out = $('resetMsg');
+    if (pw.length < 8) { out.className = 'err'; out.textContent = '8 caractères minimum.'; return; }
+    $('go').disabled = true; out.className = ''; out.textContent = 'Enregistrement…';
+    fetch(URL_ + '/auth/v1/user', { method: 'PUT', headers: { apikey: KEY, Authorization: 'Bearer ' + p.get('access_token'), 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) })
+      .then(function (r) {
+        if (!r.ok) throw new Error('x');
+        $('resetForm').hidden = true; $('icon').textContent = '✅'; $('title').textContent = 'Mot de passe changé';
+        $('msg').innerHTML = '<b>C\'est fait.</b>';
+        $('next').textContent = "Retourne dans l'application et connecte-toi avec ton nouveau mot de passe. Conseil : fais-le d'abord sur le téléphone où tu utilisais ÉCHÉANCE, ta sauvegarde sera alors conservée. Sur un nouveau téléphone, une sauvegarde faite avec l'ancien mot de passe ne pourra pas être relue.";
+      })
+      .catch(function () { $('go').disabled = false; out.className = 'err'; out.textContent = "Impossible d'enregistrer. Le lien a peut-être expiré : demande un nouveau mail depuis l'application."; });
+  });
+}
+</script>
+</body>
+</html>
