@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>ÉCHÉANCE — Administration</title>
+<style>
+:root{--bg:#0a0a0b;--s:#111113;--s2:#18181b;--b:#27272b;--t:#fafafa;--t2:#b4b4bc;--t3:#80808a;--a:#2f6bff;--ok:#2dd4a0;--warn:#ffb020;--bad:#ff5a5f}
+@media (prefers-color-scheme:light){:root{--bg:#f6f6f7;--s:#fff;--s2:#f1f1f3;--b:#e3e3e7;--t:#0a0a0b;--t2:#52525b;--t3:#71717a}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--t);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums;padding:16px 16px 90px;max-width:760px;margin:0 auto}
+h1{font-size:20px;font-weight:700;letter-spacing:.5px}h2{font-size:16px;margin:18px 0 10px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}
+.muted{color:var(--t3);font-size:13px}
+.card{background:var(--s);border:1px solid var(--b);border-radius:16px;padding:16px;margin-bottom:12px}
+label{display:block;font-size:13px;color:var(--t2);margin:12px 0 5px;font-weight:600}
+input,select,textarea{width:100%;background:var(--s2);color:var(--t);border:1px solid var(--b);border-radius:12px;padding:12px;font:inherit}
+input:focus,select:focus{outline:2px solid var(--a);outline-offset:0}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1 1 140px}
+button{font:inherit;font-weight:600;border-radius:12px;border:1px solid var(--b);background:var(--s2);color:var(--t);padding:11px 14px;cursor:pointer}
+button.p{background:var(--a);border-color:var(--a);color:#fff}button.d{color:var(--bad)}button.sm{padding:8px 11px;font-size:13px}
+button:disabled{opacity:.5}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--b);margin-bottom:14px;overflow-x:auto}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--t3);padding:11px 14px;white-space:nowrap}
+.tabs button.on{color:var(--t);border-bottom-color:var(--a)}
+.chips{display:flex;gap:8px;overflow-x:auto;margin:10px 0}.chips button{border-radius:99px;padding:7px 13px;font-size:13px;white-space:nowrap;font-weight:500}
+.chips button.on{background:var(--t);color:var(--bg);border-color:var(--t)}
+.badge{display:inline-block;font-size:12px;font-weight:700;border-radius:99px;padding:2px 9px;border:1px solid var(--b)}
+.ok{color:var(--ok);border-color:var(--ok)}.warn{color:var(--warn);border-color:var(--warn)}.bad{color:var(--bad);border-color:var(--bad)}
+.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:17px;font-weight:700;letter-spacing:1px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px}.kpi{background:var(--s);border:1px solid var(--b);border-radius:16px;padding:14px}
+.kpi b{display:block;font-size:26px;font-weight:700}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.hidden{display:none!important}
+#toast{position:fixed;left:16px;right:16px;bottom:18px;max-width:728px;margin:0 auto;background:var(--t);color:var(--bg);padding:13px 16px;border-radius:14px;font-weight:600;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none}
+#toast.show{opacity:1;transform:none}
+.list-row{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--b)}.list-row:first-child{border-top:0}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" role="status"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.100.0/dist/umd/supabase.min.js"></script>
+<script>
+/* ---------- Réglages (vous pouvez les remplir ici, ou au premier lancement dans la page) ---------- */
+const CFG = { supabaseUrl: 'https://oydwnxpejqwdngkylgwc.supabase.co', supabaseKey: 'sb_publishable_u6bfuVBc5gkXHJ0XUTkqYQ_kB6DzzIH', countryCode: '243', appName: 'ÉCHÉANCE PRO' };
+
+const $app = document.getElementById('app');
+let sb = null, state = { tab: 'dash', filter: 'all', q: '', licenses: [], payments: [], orders: [], users: [], loading: false, created: null, tbl: 'customers', tblRows: [], tblFor: '', tblErr: '', tq: '', uq: '' };
+
+/* ---------- utilitaires ---------- */
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, ''); else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return e;
+}
+const toastEl = document.getElementById('toast'); let tt;
+function toast(m) { toastEl.textContent = m; toastEl.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => toastEl.classList.remove('show'), 3200); }
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+const pad = (n) => String(n).padStart(2, '0');
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const today = () => ymd(new Date());
+function addMonths(dateStr, m) {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const t = new Date(y, mo - 1 + m, 1); const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  t.setDate(Math.min(d, last)); return ymd(t);
+}
+const fr = (s) => { if (!s) return 'à vie'; const [y, m, d] = s.split('-'); return `${d}/${m}/${y}`; };
+const daysTo = (s) => Math.round((new Date(s + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 86400000);
+const money = (n, c) => (c === 'USD' ? `${Number(n).toFixed(2).replace('.', ',')} $` : `${Math.round(n).toLocaleString('fr-FR')} FC`);
+function genCode() {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const b = new Uint8Array(8); crypto.getRandomValues(b);
+  const s = [...b].map((x) => A[x % A.length]).join(''); return `ECH-${s.slice(0, 4)}-${s.slice(4)}`;
+}
+function waLink(phone, text) {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2); else if (d.startsWith('0')) d = CFG.countryCode + d.slice(1); else if (d.length <= 9) d = CFG.countryCode + d;
+  return `https://wa.me/${d}?text=${encodeURIComponent(text)}`;
+}
+function codeMessage(name, code, exp) {
+  return `Bonjour${name ? ' ' + name : ''}, voici votre code ${CFG.appName} : ${code}\nValable ${exp ? "jusqu'au " + fr(exp) : 'à vie'}.\nDans l'application : Paramètres, puis « Activer PRO », et collez ce code (une connexion internet est nécessaire pour l'activation). Merci !`;
+}
+async function copy(t) { try { await navigator.clipboard.writeText(t); toast('Copié ✓'); } catch (e) { prompt('Copiez ce texte :', t); } }
+function status(l) {
+  if (l.status === 'revoked') return { t: 'Révoquée', c: 'bad', k: 'revoked' };
+  if (l.expires_at && l.expires_at < today()) return { t: 'Expirée', c: 'bad', k: 'expired' };
+  if (l.expires_at && daysTo(l.expires_at) <= 7) return { t: `Expire dans ${daysTo(l.expires_at)} j`, c: 'warn', k: 'soon' };
+  return { t: 'Active', c: 'ok', k: 'active' };
+}
+const errMsg = (e) => (e && e.message) ? e.message : 'Erreur inconnue';
+
+/* ---------- connexion ---------- */
+function getCfg() { return { url: CFG.supabaseUrl || store.get('adm_url') || '', key: CFG.supabaseKey || store.get('adm_key') || '' }; }
+async function boot() {
+  const c = getCfg();
+  if (!c.url || !c.key) return renderSetup();
+  sb = window.supabase.createClient(c.url, c.key);
+  const { data } = await sb.auth.getSession();
+  if (data && data.session) { await loadAll(); renderMain(); } else renderLogin();
+}
+function renderSetup() {
+  const u = h('input', { placeholder: 'https://xxxx.supabase.co', autocapitalize: 'off', autocorrect: 'off' });
+  const k = h('input', { placeholder: 'Clé « anon public » (commence par eyJ…)', autocapitalize: 'off', autocorrect: 'off' });
+  $app.replaceChildren(h('h1', {}, 'ÉCHÉANCE · Administration'), h('div', { class: 'card' },
+    h('h2', {}, 'Connexion au serveur'), h('p', { class: 'muted' }, 'À copier depuis Supabase : Project Settings, puis API. Une seule fois sur cet appareil.'),
+    h('label', {}, 'Project URL'), u, h('label', {}, 'Clé anon public'), k,
+    h('div', { class: 'acts' }, h('button', { class: 'p', onclick: () => {
+      const url = u.value.trim().replace(/\/+$/, ''), key = k.value.trim();
+      if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url) || key.length < 40) return toast('URL ou clé invalide');
+      store.set('adm_url', url); store.set('adm_key', key); boot();
+    } }, 'Enregistrer'))));
+}
+function renderLogin() {
+  const em = h('input', { type: 'email', autocomplete: 'username', value: store.get('adm_email') || '' });
+  const pw = h('input', { type: 'password', autocomplete: 'current-password' });
+  const go = async () => {
+    const { error } = await sb.auth.signInWithPassword({ email: em.value.trim(), password: pw.value });
+    if (error) return toast('Connexion refusée : ' + errMsg(error));
+    store.set('adm_email', em.value.trim()); await loadAll(); renderMain();
+  };
+  pw.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  $app.replaceChildren(h('h1', {}, 'ÉCHÉANCE · Administration'), h('div', { class: 'card' },
+    h('label', {}, 'E-mail'), em, h('label', {}, 'Mot de passe'), pw,
+    h('div', { class: 'acts' }, h('button', { class: 'p', onclick: go }, 'Se connecter'),
+      h('button', { class: 'sm', onclick: () => { store.set('adm_url', ''); store.set('adm_key', ''); renderSetup(); } }, 'Changer de serveur'))));
+}
+
+/* ---------- données ---------- */
+async function loadAll() {
+  const a = await sb.from('licenses').select('*, customers(name,phone,email), license_devices(device_id,last_seen)').order('created_at', { ascending: false });
+  if (a.error) toast('Lecture impossible : ' + errMsg(a.error)); else state.licenses = a.data || [];
+  const b = await sb.from('payments').select('*, customers(name), licenses(code)').order('paid_at', { ascending: false }).limit(200);
+  if (!b.error) state.payments = b.data || [];
+  const o = await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(100);
+  if (!o.error) state.orders = o.data || [];
+  const u = await sb.rpc('admin_users');
+  state.users = u.error ? null : (u.data || []);
+}
+async function refresh() { await loadAll(); renderMain(); }
+
+/* ---------- actions ---------- */
+async function extend(l, months) {
+  const base = l.expires_at && l.expires_at > today() ? l.expires_at : today();
+  const exp = addMonths(base, months);
+  const { error } = await sb.from('licenses').update({ expires_at: exp, status: 'active' }).eq('id', l.id);
+  if (error) return toast(errMsg(error)); toast(`Prolongée jusqu'au ${fr(exp)}`); refresh();
+}
+async function setStatus(l, st) {
+  if (st === 'revoked' && !confirm('Révoquer cette licence ? Elle cessera de fonctionner à la prochaine vérification.')) return;
+  const { error } = await sb.from('licenses').update({ status: st }).eq('id', l.id);
+  if (error) return toast(errMsg(error)); toast(st === 'revoked' ? 'Licence révoquée' : 'Licence réactivée'); refresh();
+}
+async function resetDevices(l) {
+  if (!confirm('Libérer tous les appareils de cette licence ? Le client pourra la réactiver sur son nouveau téléphone.')) return;
+  const { error } = await sb.from('license_devices').delete().eq('license_id', l.id);
+  if (error) return toast(errMsg(error)); toast('Appareils libérés'); refresh();
+}
+async function addPayment(l) {
+  const a = prompt('Montant reçu (ex. 19.99 ou 20000) :'); if (a === null) return;
+  const amount = Number(String(a).replace(',', '.')); if (!(amount >= 0)) return toast('Montant invalide');
+  const cur = (prompt('Devise : USD ou CDF ?', 'USD') || 'USD').toUpperCase(); if (!['USD', 'CDF'].includes(cur)) return toast('Devise invalide');
+  const method = prompt('Moyen (M-Pesa, Airtel Money, Orange Money, Cash…) :', 'M-Pesa') || 'Autre';
+  const { error } = await sb.from('payments').insert({ license_id: l.id, customer_id: l.customer_id, amount, currency: cur, method: method.slice(0, 30), reference: '' });
+  if (error) return toast(errMsg(error)); toast('Paiement enregistré'); refresh();
+}
+async function approveOrder(o) {
+  if (!confirm(`Valider ${money(o.amount, o.currency)} reçu via ${o.network} (réf. ${o.txn_ref}) ? Le code sera créé et envoyé à l'application du client.`)) return;
+  const { data, error } = await sb.rpc('approve_order', { p_order: o.id });
+  if (error) return toast(errMsg(error));
+  state.created = { name: o.payer_name, phone: o.payer_phone, code: data.code, exp: data.expires_at }; state.tab = 'new';
+  await loadAll(); renderMain(); toast('Commande validée ✓ : le client reçoit son code dans l\'application');
+}
+async function rejectOrder(o) {
+  if (!confirm('Rejeter cette commande (paiement non reçu ou faux) ?')) return;
+  const { error } = await sb.from('orders').update({ status: 'rejected', decided_at: new Date().toISOString() }).eq('id', o.id);
+  if (error) return toast(errMsg(error)); toast('Commande rejetée'); refresh();
+}
+async function createLicense(f) {
+  const name = f.name.value.trim(); if (!name) return toast('Le nom du client est obligatoire');
+  const months = f.months.value === 'life' ? null : Number(f.months.value);
+  const exp = months ? addMonths(today(), months) : null;
+  const c = await sb.from('customers').insert({ name, phone: f.phone.value.trim() || null, email: f.email.value.trim() || null, notes: f.notes.value.trim() }).select().single();
+  if (c.error) return toast(errMsg(c.error));
+  let lic = null, code = '';
+  for (let i = 0; i < 5 && !lic; i++) {
+    code = genCode();
+    const r = await sb.from('licenses').insert({ code, customer_id: c.data.id, expires_at: exp, max_devices: Number(f.devices.value) || 2 }).select().single();
+    if (r.error && String(r.error.code) !== '23505') return toast(errMsg(r.error));
+    if (!r.error) lic = r.data;
+  }
+  if (!lic) return toast('Impossible de générer un code, réessayez');
+  const amt = Number(String(f.amount.value).replace(',', '.'));
+  if (amt > 0) await sb.from('payments').insert({ license_id: lic.id, customer_id: c.data.id, amount: amt, currency: f.currency.value, method: f.method.value, reference: f.ref.value.trim().slice(0, 80) });
+  state.created = { name, phone: f.phone.value.trim(), code, exp }; await loadAll(); renderMain();
+}
+
+async function purgeDeleted() {
+  if (!confirm('Supprimer définitivement les comptes dont le délai de 14 jours est écoulé ? Cette action est irréversible.')) return;
+  const { data, error } = await sb.rpc('purge_deleted_accounts');
+  if (error) return toast(errMsg(error)); toast(`${data || 0} compte(s) supprimé(s)`); await loadAll(); renderMain();
+}
+/* ---------- comptes (statistiques seulement : le contenu des sauvegardes est chiffré et illisible) ---------- */
+function searchBox(key, placeholder) {
+  return h('input', { placeholder, value: state[key], 'data-k': key, oninput: (e) => {
+    state[key] = e.target.value; const pos = e.target.selectionStart; renderMain();
+    const i = document.querySelector(`input[data-k="${key}"]`); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (x) {} } } });
+}
+function viewUsers() {
+  if (state.users === null) return h('div', { class: 'card' }, h('b', {}, 'Liste des comptes indisponible'), h('p', { class: 'muted' }, 'Exécutez de nouveau le fichier SQL complet dans Supabase (section 10), puis actualisez cette page.'), h('button', { class: 'sm', onclick: refresh }, 'Actualiser'));
+  const q = state.uq.trim().toLowerCase(); const list = state.users.filter((u) => !q || String(u.u_email).toLowerCase().includes(q));
+  return h('div', {}, h('div', { class: 'top' }, h('b', {}, `${state.users.length} compte(s)`), h('button', { class: 'sm', onclick: refresh }, 'Actualiser')),
+    h('p', { class: 'muted' }, 'Vous voyez qui est inscrit, pas ce qu\'il y a dedans : les échéances sont chiffrées sur le téléphone de chaque utilisateur.'),
+    searchBox('uq', 'Rechercher une adresse e-mail'),
+    h('div', { class: 'card' }, list.length ? list.map((u) => h('div', { class: 'list-row' },
+      h('div', {}, h('b', {}, u.u_email || '—'), h('div', { class: 'muted' }, `Inscrit le ${new Date(u.u_created).toLocaleDateString('fr-FR')} · ${u.has_backup ? 'sauvegarde du ' + new Date(u.backup_at).toLocaleDateString('fr-FR') : 'aucune sauvegarde'}`)),
+      u.delete_at ? h('span', { class: 'badge bad' }, 'Suppression le ' + new Date(u.delete_at).toLocaleDateString('fr-FR')) : h('span', { class: 'badge ' + (u.confirmed ? 'ok' : 'warn') }, u.confirmed ? 'Confirmé' : 'Non confirmé'))) : h('p', { class: 'muted' }, 'Aucun compte.')),
+    h('div', { class: 'card' }, h('b', {}, 'Suppressions de comptes'),
+      h('p', { class: 'muted' }, 'Quand un utilisateur demande la suppression de son compte, elle est effacée automatiquement après 14 jours. Ce bouton efface tout de suite les comptes dont le délai est écoulé (utile si la tâche automatique n\'est pas activée).'),
+      h('div', { class: 'acts' }, h('button', { class: 'sm d', onclick: purgeDeleted }, 'Purger les comptes échus'))));
+}
+
+/* ---------- données : consulter et modifier les tables ---------- */
+const TABLES = {
+  customers: { label: 'Clients', order: 'created_at', edit: { name: 'req', phone: 'null', email: 'null', notes: 'txt' }, del: true, note: 'Supprimer un client conserve ses licences et paiements.' },
+  licenses: { label: 'Licences', order: 'created_at', edit: { expires_at: 'date', status: ['active', 'revoked'], max_devices: 'int', note: 'txt' }, del: true, note: 'Date de fin vide = licence à vie.' },
+  payments: { label: 'Paiements', order: 'paid_at', edit: { amount: 'num', currency: ['USD', 'CDF'], method: 'txt', reference: 'txt' }, del: true },
+  license_devices: { label: 'Appareils', order: 'last_seen', edit: {}, del: true, key: ['license_id', 'device_id'], note: 'Supprimer un appareil le libère : le client pourra réactiver sa licence sur un autre téléphone.' },
+  orders: { label: 'Commandes', order: 'created_at', edit: {}, del: false, note: 'Lecture seule : validez ou rejetez depuis l\'onglet Commandes.' },
+  offer_prices: { label: 'Prix', order: 'id', edit: {}, del: false, note: 'Lecture seule : un prix doit rester identique ici et dans l\'application. Pour le changer, demandez une mise à jour de l\'application.' }
+};
+async function loadTable() {
+  const t = TABLES[state.tbl]; state.tblErr = '';
+  const r = await sb.from(state.tbl).select('*').order(t.order, { ascending: state.tbl === 'offer_prices' }).limit(150);
+  if (r.error) { state.tblErr = errMsg(r.error); state.tblRows = []; } else state.tblRows = r.data || [];
+  state.tblFor = state.tbl;
+}
+function convert(kind, raw) {
+  const v = String(raw).trim();
+  if (kind === 'req') { if (!v) throw new Error('Le nom ne peut pas être vide'); return v; }
+  if (kind === 'null') return v || null;
+  if (kind === 'txt') return v;
+  if (kind === 'date') { if (!v) return null; if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Date attendue : AAAA-MM-JJ'); return v; }
+  if (kind === 'int') { const n = parseInt(v, 10); if (!(n >= 1 && n <= 20)) throw new Error('Nombre entre 1 et 20'); return n; }
+  if (kind === 'num') { const n = Number(v.replace(',', '.')); if (!(n >= 0)) throw new Error('Montant invalide'); return n; }
+  return v;
+}
+async function saveRow(name, row, inputs) {
+  const cfg = TABLES[name]; const patch = {};
+  try { for (const [col, kind] of Object.entries(cfg.edit)) if (inputs[col]) patch[col] = convert(Array.isArray(kind) ? 'sel' : kind, inputs[col].value); } catch (e) { return toast(e.message); }
+  const { error } = await sb.from(name).update(patch).eq('id', row.id);
+  if (error) return toast(errMsg(error)); toast('Enregistré ✓'); await loadAll(); await loadTable(); renderMain();
+}
+async function deleteRow(name, row) {
+  const cfg = TABLES[name];
+  if (!confirm('Supprimer cette ligne définitivement ?' + (cfg.note ? '\n\n' + cfg.note : ''))) return;
+  let q = sb.from(name).delete();
+  for (const k of (cfg.key || ['id'])) q = q.eq(k, row[k]);
+  const { error } = await q;
+  if (error) return toast(errMsg(error)); toast('Supprimé'); await loadAll(); await loadTable(); renderMain();
+}
+function rowCard(name, row) {
+  const cfg = TABLES[name]; const inputs = {}; const kids = [];
+  const title = row.name || row.code || row.ref || row.id || row.device_id || '—';
+  for (const [col, val] of Object.entries(row)) {
+    const kind = cfg.edit[col];
+    if (kind) {
+      inputs[col] = Array.isArray(kind) ? h('select', {}, kind.map((o) => h('option', { value: o, selected: o === val }, o))) : h('input', { value: val == null ? '' : String(val), placeholder: kind === 'date' ? 'AAAA-MM-JJ (vide = à vie)' : '' });
+      kids.push(h('label', {}, col), inputs[col]);
+    } else if (!['id'].includes(col)) kids.push(h('div', { class: 'muted' }, `${col} : ${val == null ? '—' : typeof val === 'object' ? JSON.stringify(val) : String(val)}`));
+  }
+  const acts = [];
+  if (Object.keys(cfg.edit).length) acts.push(h('button', { class: 'sm p', onclick: (e) => { e.target.disabled = true; saveRow(name, row, inputs).finally(() => { e.target.disabled = false; }); } }, 'Enregistrer'));
+  if (cfg.del) acts.push(h('button', { class: 'sm d', onclick: () => deleteRow(name, row) }, 'Supprimer'));
+  return h('div', { class: 'card' }, h('b', {}, String(title)), kids, acts.length ? h('div', { class: 'acts' }, acts) : null);
+}
+function viewTables() {
+  const cfg = TABLES[state.tbl]; const q = state.tq.trim().toLowerCase();
+  const rows = state.tblFor === state.tbl ? state.tblRows.filter((r) => !q || JSON.stringify(r).toLowerCase().includes(q)) : [];
+  return h('div', {}, h('div', { class: 'chips' }, Object.entries(TABLES).map(([k, t]) => h('button', { class: state.tbl === k ? 'on' : '', onclick: async () => { state.tbl = k; state.tq = ''; await loadTable(); renderMain(); } }, t.label))),
+    cfg.note ? h('p', { class: 'muted' }, cfg.note) : null,
+    searchBox('tq', 'Filtrer les lignes affichées'),
+    state.tblErr ? h('p', { class: 'muted' }, 'Lecture impossible : ' + state.tblErr) : null,
+    h('p', { class: 'muted' }, `${rows.length} ligne(s) affichée(s) (150 plus récentes au maximum)`),
+    rows.map((r) => rowCard(state.tbl, r)));
+}
+
+/* ---------- écrans ---------- */
+function renderMain() {
+  const pend = state.orders.filter((o) => o.status === 'pending').length;
+  const tabs = [['dash', 'Tableau'], ['orders', pend ? `Commandes (${pend})` : 'Commandes'], ['licences', 'Licences'], ['new', 'Nouvelle'], ['payments', 'Paiements'], ['users', 'Comptes'], ['tables', 'Données']];
+  $app.replaceChildren(
+    h('div', { class: 'top' }, h('h1', {}, 'ÉCHÉANCE · Admin v2'), h('button', { class: 'sm', onclick: async () => { await sb.auth.signOut({ scope: 'local' }); renderLogin(); } }, 'Déconnexion')),
+    h('div', { class: 'tabs' }, tabs.map(([k, t]) => h('button', { class: state.tab === k ? 'on' : '', onclick: async () => { state.tab = k; state.created = null; if (k === 'tables') await loadTable(); renderMain(); } }, t))),
+    state.tab === 'orders' ? viewOrders() : state.tab === 'licences' ? viewLicenses() : state.tab === 'new' ? viewNew() : state.tab === 'payments' ? viewPayments() : state.tab === 'users' ? viewUsers() : state.tab === 'tables' ? viewTables() : viewDash());
+}
+function licCard(l) {
+  const s = status(l), c = l.customers || {}, dev = (l.license_devices || []).length;
+  const msg = codeMessage(c.name, l.code, l.expires_at);
+  return h('div', { class: 'card' },
+    h('div', { class: 'top' }, h('b', {}, c.name || 'Sans client'), h('span', { class: 'badge ' + s.c }, s.t)),
+    h('div', { class: 'code' }, l.code),
+    h('div', { class: 'muted' }, `${c.phone ? c.phone + ' · ' : ''}Valable ${l.expires_at ? "jusqu'au " + fr(l.expires_at) : 'à vie'} · Appareils ${dev}/${l.max_devices}`),
+    h('div', { class: 'acts' },
+      h('button', { class: 'sm', onclick: () => copy(l.code) }, 'Copier le code'),
+      c.phone ? h('button', { class: 'sm p', onclick: () => window.open(waLink(c.phone, msg), '_blank', 'noopener') }, 'WhatsApp') : null,
+      h('button', { class: 'sm', onclick: () => extend(l, 1) }, '+1 mois'), h('button', { class: 'sm', onclick: () => extend(l, 3) }, '+3 mois'), h('button', { class: 'sm', onclick: () => extend(l, 12) }, '+12 mois'),
+      h('button', { class: 'sm', onclick: () => addPayment(l) }, 'Paiement'),
+      dev ? h('button', { class: 'sm', onclick: () => resetDevices(l) }, 'Libérer appareils') : null,
+      l.status === 'active' ? h('button', { class: 'sm d', onclick: () => setStatus(l, 'revoked') }, 'Révoquer') : h('button', { class: 'sm', onclick: () => setStatus(l, 'active') }, 'Réactiver')));
+}
+function orderCard(o) {
+  const dup = state.orders.some((x) => x.id !== o.id && x.txn_ref.toLowerCase() === o.txn_ref.toLowerCase());
+  const mins = Math.max(0, Math.round((Date.now() - new Date(o.created_at)) / 60000));
+  const age = mins < 60 ? `il y a ${mins} min` : mins < 1440 ? `il y a ${Math.round(mins / 60)} h` : new Date(o.created_at).toLocaleDateString('fr-FR');
+  const cls = o.status === 'pending' ? 'warn' : o.status === 'paid' ? 'ok' : 'bad';
+  const lbl = o.status === 'pending' ? 'À vérifier' : o.status === 'paid' ? 'Validée' : 'Rejetée';
+  return h('div', { class: 'card' },
+    h('div', { class: 'top' }, h('b', {}, o.payer_name || 'Client sans nom'), h('span', { class: 'badge ' + cls }, lbl)),
+    h('div', { class: 'code' }, money(o.amount, o.currency)),
+    h('div', { class: 'muted' }, `${o.network} · réf. ${o.txn_ref} · offre ${o.offer} · ${age}`),
+    h('div', { class: 'muted' }, `${o.payer_phone || 'téléphone non donné'} · ${o.ref}`),
+    dup ? h('div', { class: 'badge bad' }, '⚠ Cette référence de transaction apparaît déjà dans une autre commande') : null,
+    o.status === 'pending' ? h('div', { class: 'acts' },
+      h('button', { class: 'sm p', onclick: (e) => { e.target.disabled = true; approveOrder(o).finally(() => { e.target.disabled = false; }); } }, 'Paiement reçu : valider'),
+      o.payer_phone ? h('button', { class: 'sm', onclick: () => window.open(waLink(o.payer_phone, `Bonjour, votre commande ${o.ref} est bien reçue, nous vérifions votre paiement.`), '_blank', 'noopener') }, 'WhatsApp') : null,
+      h('button', { class: 'sm d', onclick: () => rejectOrder(o) }, 'Rejeter')) : null);
+}
+function viewOrders() {
+  const pend = state.orders.filter((o) => o.status === 'pending'), done = state.orders.filter((o) => o.status !== 'pending').slice(0, 30);
+  return h('div', {}, h('button', { class: 'sm', onclick: refresh }, 'Actualiser'),
+    h('p', { class: 'muted' }, 'Vérifiez le SMS de votre opérateur (montant et référence), puis validez : le code arrive tout seul dans l\'application du client.'),
+    pend.length ? pend.map(orderCard) : h('p', { class: 'muted' }, 'Aucune commande en attente.'),
+    done.length ? h('h2', {}, 'Déjà traitées') : null, done.map(orderCard));
+}
+function viewLicenses() {
+  const F = [['all', 'Toutes'], ['active', 'Actives'], ['soon', 'Bientôt expirées'], ['expired', 'Expirées'], ['revoked', 'Révoquées']];
+  const q = state.q.trim().toLowerCase();
+  const list = state.licenses.filter((l) => (state.filter === 'all' || status(l).k === state.filter || (state.filter === 'active' && status(l).k === 'soon')) &&
+    (!q || [l.code, (l.customers || {}).name, (l.customers || {}).phone].join(' ').toLowerCase().includes(q)));
+  const search = h('input', { placeholder: 'Rechercher : nom, téléphone, code', value: state.q, oninput: (e) => { state.q = e.target.value; const v = e.target.selectionStart; renderMain(); const i = document.querySelector('input[placeholder^="Rechercher"]'); i.focus(); i.setSelectionRange(v, v); } });
+  return h('div', {}, search, h('div', { class: 'chips' }, F.map(([k, t]) => h('button', { class: state.filter === k ? 'on' : '', onclick: () => { state.filter = k; renderMain(); } }, t))),
+    list.length ? list.map(licCard) : h('p', { class: 'muted' }, 'Aucune licence.'));
+}
+function viewNew() {
+  if (state.created) {
+    const c = state.created, msg = codeMessage(c.name, c.code, c.exp);
+    return h('div', { class: 'card' }, h('h2', {}, 'Licence créée ✓'), h('div', { class: 'code' }, c.code),
+      h('p', { class: 'muted' }, `Pour ${c.name} · valable ${c.exp ? "jusqu'au " + fr(c.exp) : 'à vie'}`),
+      h('div', { class: 'acts' }, h('button', { class: 'p', onclick: () => c.phone ? window.open(waLink(c.phone, msg), '_blank', 'noopener') : copy(msg) }, c.phone ? 'Envoyer par WhatsApp' : 'Copier le message'),
+        h('button', { onclick: () => copy(c.code) }, 'Copier le code'), h('button', { onclick: () => { state.created = null; renderMain(); } }, 'Nouvelle licence')));
+  }
+  const f = {
+    name: h('input', { placeholder: 'Nom du client' }), phone: h('input', { type: 'tel', placeholder: '0970000000' }), email: h('input', { type: 'email', placeholder: 'facultatif' }),
+    months: h('select', {}, [['1', '1 mois'], ['3', '3 mois'], ['6', '6 mois'], ['12', '12 mois'], ['life', 'À vie']].map(([v, t]) => h('option', { value: v, selected: v === '12' }, t))),
+    devices: h('input', { type: 'number', min: 1, max: 20, value: 2 }),
+    amount: h('input', { type: 'text', inputmode: 'decimal', placeholder: 'ex. 19,99 (laisser vide si rien reçu)' }),
+    currency: h('select', {}, h('option', { value: 'USD' }, 'USD ($)'), h('option', { value: 'CDF' }, 'CDF (FC)')),
+    method: h('select', {}, ['M-Pesa', 'Airtel Money', 'Orange Money', 'Cash', 'Autre'].map((m) => h('option', { value: m }, m))),
+    ref: h('input', { placeholder: 'Référence de la transaction (facultatif)' }), notes: h('input', { placeholder: 'Note (facultatif)' })
+  };
+  return h('div', { class: 'card' }, h('h2', {}, 'Nouvelle licence'),
+    h('label', {}, 'Client'), f.name, h('label', {}, 'Téléphone WhatsApp'), f.phone, h('label', {}, 'E-mail'), f.email,
+    h('div', { class: 'row' }, h('div', {}, h('label', {}, 'Durée'), f.months), h('div', {}, h('label', {}, 'Appareils max'), f.devices)),
+    h('label', {}, 'Paiement reçu'), f.amount, h('div', { class: 'row' }, f.currency, f.method), h('label', {}, 'Référence'), f.ref, h('label', {}, 'Note'), f.notes,
+    h('div', { class: 'acts' }, h('button', { class: 'p', onclick: (e) => { e.target.disabled = true; createLicense(f).finally(() => { e.target.disabled = false; }); } }, 'Créer la licence')));
+}
+function viewPayments() {
+  const tot = {}; for (const p of state.payments) tot[p.currency] = (tot[p.currency] || 0) + Number(p.amount);
+  return h('div', {}, h('div', { class: 'card' }, h('b', {}, 'Total encaissé (200 derniers)'), h('div', { class: 'code' }, Object.keys(tot).length ? Object.entries(tot).map(([c, v]) => money(v, c)).join(' · ') : '—')),
+    h('div', { class: 'card' }, state.payments.length ? state.payments.map((p) => h('div', { class: 'list-row' },
+      h('div', {}, h('b', {}, (p.customers || {}).name || '—'), h('div', { class: 'muted' }, `${p.method}${p.reference ? ' · ' + p.reference : ''} · ${new Date(p.paid_at).toLocaleDateString('fr-FR')}`)), h('b', {}, money(p.amount, p.currency)))) : h('p', { class: 'muted' }, 'Aucun paiement.')));
+}
+function viewDash() {
+  const c = { active: 0, soon: 0, expired: 0, revoked: 0 }; for (const l of state.licenses) { const k = status(l).k; c[k === 'soon' ? 'soon' : k]++; }
+  const m = today().slice(0, 7), rev = {}; for (const p of state.payments) if (String(p.paid_at).slice(0, 7) === m) rev[p.currency] = (rev[p.currency] || 0) + Number(p.amount);
+  const soon = state.licenses.filter((l) => status(l).k === 'soon').sort((a, b) => a.expires_at.localeCompare(b.expires_at));
+  const seen = state.licenses.flatMap((l) => (l.license_devices || []).map((d) => ({ n: (l.customers || {}).name || l.code, at: d.last_seen }))).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 5);
+  const pendN = state.orders.filter((o) => o.status === 'pending').length;
+  const us = state.users || []; const wk = Date.now() - 7 * 864e5;
+  return h('div', {}, pendN ? h('div', { class: 'card' }, h('b', {}, `${pendN} commande(s) à vérifier`), h('div', { class: 'acts' }, h('button', { class: 'sm p', onclick: () => { state.tab = 'orders'; renderMain(); } }, 'Ouvrir les commandes'))) : null,
+    h('div', { class: 'kpis' },
+    h('div', { class: 'kpi' }, h('b', {}, c.active + c.soon), 'Abonnés actifs'), h('div', { class: 'kpi' }, h('b', {}, c.soon), 'Expirent sous 7 j'),
+    h('div', { class: 'kpi' }, h('b', {}, c.expired), 'Expirés'), h('div', { class: 'kpi' }, h('b', {}, Object.keys(rev).length ? Object.entries(rev).map(([k, v]) => money(v, k)).join(' · ') : '0'), 'Encaissé ce mois')),
+    state.users === null ? null : h('div', { class: 'kpis', style: 'margin-top:10px' },
+      h('div', { class: 'kpi' }, h('b', {}, us.length), 'Comptes créés'), h('div', { class: 'kpi' }, h('b', {}, us.filter((u) => new Date(u.u_created) > wk).length), 'Nouveaux (7 jours)'),
+      h('div', { class: 'kpi' }, h('b', {}, us.filter((u) => u.has_backup).length), 'Avec sauvegarde'), h('div', { class: 'kpi' }, h('b', {}, us.filter((u) => !u.confirmed).length), 'Non confirmés')),
+    h('h2', {}, 'À relancer'), h('div', { class: 'card' }, soon.length ? soon.map((l) => h('div', { class: 'list-row' }, h('div', {}, h('b', {}, (l.customers || {}).name || l.code), h('div', { class: 'muted' }, `Expire le ${fr(l.expires_at)}`)),
+      (l.customers || {}).phone ? h('button', { class: 'sm p', onclick: () => window.open(waLink(l.customers.phone, `Bonjour ${l.customers.name}, votre abonnement ${CFG.appName} expire le ${fr(l.expires_at)}. Souhaitez-vous le renouveler ?`), '_blank', 'noopener') }, 'Relancer') : null)) : h('p', { class: 'muted' }, 'Personne à relancer.')),
+    h('h2', {}, 'Dernières activations'), h('div', { class: 'card' }, seen.length ? seen.map((s) => h('div', { class: 'list-row' }, h('span', {}, s.n), h('span', { class: 'muted' }, new Date(s.at).toLocaleString('fr-FR')))) : h('p', { class: 'muted' }, 'Aucune activation.')));
+}
+boot();
+</script>
+</body>
+</html>
