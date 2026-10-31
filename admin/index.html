@@ -182,8 +182,8 @@ async function rejectOrder(o) {
 }
 async function createLicense(f) {
   const name = f.name.value.trim(); if (!name) return toast('Le nom du client est obligatoire');
-  const months = f.months.value === 'life' ? null : Number(f.months.value);
-  const exp = months ? addMonths(today(), months) : null;
+  const months = Number(f.months.value);
+  const exp = addMonths(today(), months);
   const c = await sb.from('customers').insert({ name, phone: f.phone.value.trim() || null, email: f.email.value.trim() || null, notes: f.notes.value.trim() }).select().single();
   if (c.error) return toast(errMsg(c.error));
   let lic = null, code = '';
@@ -199,6 +199,11 @@ async function createLicense(f) {
   state.created = { name, phone: f.phone.value.trim(), code, exp }; await loadAll(); renderMain();
 }
 
+async function purgeDeleted() {
+  if (!confirm('Supprimer définitivement les comptes dont le délai de 14 jours est écoulé ? Cette action est irréversible.')) return;
+  const { data, error } = await sb.rpc('purge_deleted_accounts');
+  if (error) return toast(errMsg(error)); toast(`${data || 0} compte(s) supprimé(s)`); await loadAll(); renderMain();
+}
 /* ---------- comptes (statistiques seulement : le contenu des sauvegardes est chiffré et illisible) ---------- */
 function searchBox(key, placeholder) {
   return h('input', { placeholder, value: state[key], 'data-k': key, oninput: (e) => {
@@ -213,13 +218,16 @@ function viewUsers() {
     searchBox('uq', 'Rechercher une adresse e-mail'),
     h('div', { class: 'card' }, list.length ? list.map((u) => h('div', { class: 'list-row' },
       h('div', {}, h('b', {}, u.u_email || '—'), h('div', { class: 'muted' }, `Inscrit le ${new Date(u.u_created).toLocaleDateString('fr-FR')} · ${u.has_backup ? 'sauvegarde du ' + new Date(u.backup_at).toLocaleDateString('fr-FR') : 'aucune sauvegarde'}`)),
-      h('span', { class: 'badge ' + (u.confirmed ? 'ok' : 'warn') }, u.confirmed ? 'Confirmé' : 'Non confirmé'))) : h('p', { class: 'muted' }, 'Aucun compte.')));
+      u.delete_at ? h('span', { class: 'badge bad' }, 'Suppression le ' + new Date(u.delete_at).toLocaleDateString('fr-FR')) : h('span', { class: 'badge ' + (u.confirmed ? 'ok' : 'warn') }, u.confirmed ? 'Confirmé' : 'Non confirmé'))) : h('p', { class: 'muted' }, 'Aucun compte.')),
+    h('div', { class: 'card' }, h('b', {}, 'Suppressions de comptes'),
+      h('p', { class: 'muted' }, 'Quand un utilisateur demande la suppression de son compte, elle est effacée automatiquement après 14 jours. Ce bouton efface tout de suite les comptes dont le délai est écoulé (utile si la tâche automatique n\'est pas activée).'),
+      h('div', { class: 'acts' }, h('button', { class: 'sm d', onclick: purgeDeleted }, 'Purger les comptes échus'))));
 }
 
 /* ---------- données : consulter et modifier les tables ---------- */
 const TABLES = {
   customers: { label: 'Clients', order: 'created_at', edit: { name: 'req', phone: 'null', email: 'null', notes: 'txt' }, del: true, note: 'Supprimer un client conserve ses licences et paiements.' },
-  licenses: { label: 'Licences', order: 'created_at', edit: { expires_at: 'date', status: ['active', 'revoked'], max_devices: 'int', note: 'txt' }, del: true, note: 'Date de fin vide = licence à vie.' },
+  licenses: { label: 'Licences', order: 'created_at', edit: { expires_at: 'datereq', status: ['active', 'revoked'], max_devices: 'int', note: 'txt' }, del: true, note: 'La date de fin est obligatoire : il n\'y a plus de licence à vie.' },
   payments: { label: 'Paiements', order: 'paid_at', edit: { amount: 'num', currency: ['USD', 'CDF'], method: 'txt', reference: 'txt' }, del: true },
   license_devices: { label: 'Appareils', order: 'last_seen', edit: {}, del: true, key: ['license_id', 'device_id'], note: 'Supprimer un appareil le libère : le client pourra réactiver sa licence sur un autre téléphone.' },
   orders: { label: 'Commandes', order: 'created_at', edit: {}, del: false, note: 'Lecture seule : validez ou rejetez depuis l\'onglet Commandes.' },
@@ -236,6 +244,7 @@ function convert(kind, raw) {
   if (kind === 'req') { if (!v) throw new Error('Le nom ne peut pas être vide'); return v; }
   if (kind === 'null') return v || null;
   if (kind === 'txt') return v;
+  if (kind === 'datereq') { if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Date de fin obligatoire : AAAA-MM-JJ'); return v; }
   if (kind === 'date') { if (!v) return null; if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Date attendue : AAAA-MM-JJ'); return v; }
   if (kind === 'int') { const n = parseInt(v, 10); if (!(n >= 1 && n <= 20)) throw new Error('Nombre entre 1 et 20'); return n; }
   if (kind === 'num') { const n = Number(v.replace(',', '.')); if (!(n >= 0)) throw new Error('Montant invalide'); return n; }
@@ -261,7 +270,7 @@ function rowCard(name, row) {
   for (const [col, val] of Object.entries(row)) {
     const kind = cfg.edit[col];
     if (kind) {
-      inputs[col] = Array.isArray(kind) ? h('select', {}, kind.map((o) => h('option', { value: o, selected: o === val }, o))) : h('input', { value: val == null ? '' : String(val), placeholder: kind === 'date' ? 'AAAA-MM-JJ (vide = à vie)' : '' });
+      inputs[col] = Array.isArray(kind) ? h('select', {}, kind.map((o) => h('option', { value: o, selected: o === val }, o))) : h('input', { value: val == null ? '' : String(val), placeholder: kind === 'datereq' ? 'AAAA-MM-JJ' : '' });
       kids.push(h('label', {}, col), inputs[col]);
     } else if (!['id'].includes(col)) kids.push(h('div', { class: 'muted' }, `${col} : ${val == null ? '—' : typeof val === 'object' ? JSON.stringify(val) : String(val)}`));
   }
@@ -348,7 +357,7 @@ function viewNew() {
   }
   const f = {
     name: h('input', { placeholder: 'Nom du client' }), phone: h('input', { type: 'tel', placeholder: '0970000000' }), email: h('input', { type: 'email', placeholder: 'facultatif' }),
-    months: h('select', {}, [['1', '1 mois'], ['3', '3 mois'], ['6', '6 mois'], ['12', '12 mois'], ['life', 'À vie']].map(([v, t]) => h('option', { value: v, selected: v === '12' }, t))),
+    months: h('select', {}, [['1', '1 mois'], ['3', '3 mois'], ['6', '6 mois'], ['12', '12 mois']].map(([v, t]) => h('option', { value: v, selected: v === '12' }, t))),
     devices: h('input', { type: 'number', min: 1, max: 20, value: 2 }),
     amount: h('input', { type: 'text', inputmode: 'decimal', placeholder: 'ex. 19,99 (laisser vide si rien reçu)' }),
     currency: h('select', {}, h('option', { value: 'USD' }, 'USD ($)'), h('option', { value: 'CDF' }, 'CDF (FC)')),
