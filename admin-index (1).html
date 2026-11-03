@@ -280,21 +280,22 @@ function ago() { const s = Math.round((Date.now() - state.lastLoad) / 1000); ret
 async function refresh() { if (!(await loadAll())) return lock("Accès refusé."); renderMain(); }
 
 /* ---------- actions ---------- */
+const logA = (action, target, detail) => { try { sb.rpc('admin_log', { p_action: action, p_target: target || null, p_detail: detail || null }).then(() => {}, () => {}); } catch (e) { /* le journal ne bloque jamais */ } };
 async function extend(l, months) {
   const base = l.expires_at && l.expires_at > today() ? l.expires_at : today();
   const exp = addMonths(base, months);
   const { error } = await sb.from('licenses').update({ expires_at: exp, status: 'active' }).eq('id', l.id);
-  if (error) return toast(errMsg(error)); toast(`Prolongée jusqu'au ${fr(exp)}`); refresh();
+  if (error) return toast(errMsg(error)); toast(`Prolongée jusqu'au ${fr(exp)}`); logA('license_extend', l.code, `+${months} mois, jusqu'au ${exp}`); refresh();
 }
 async function setStatus(l, st) {
   if (st === 'revoked' && !confirm('Révoquer cette licence ? Elle cessera de fonctionner à la prochaine vérification.')) return;
   const { error } = await sb.from('licenses').update({ status: st }).eq('id', l.id);
-  if (error) return toast(errMsg(error)); toast(st === 'revoked' ? 'Licence révoquée' : 'Licence réactivée'); refresh();
+  if (error) return toast(errMsg(error)); toast(st === 'revoked' ? 'Licence révoquée' : 'Licence réactivée'); logA(st === 'revoked' ? 'license_revoke' : 'license_activate', l.code); refresh();
 }
 async function resetDevices(l) {
   if (!confirm('Libérer tous les appareils de cette licence ? Le client pourra la réactiver sur son nouveau téléphone.')) return;
   const { error } = await sb.from('license_devices').delete().eq('license_id', l.id);
-  if (error) return toast(errMsg(error)); toast('Appareils libérés'); refresh();
+  if (error) return toast(errMsg(error)); toast('Appareils libérés'); logA('license_release', l.code); refresh();
 }
 async function addPayment(l) {
   const a = prompt('Montant reçu (ex. 19.99 ou 20000) :'); if (a === null) return;
@@ -302,19 +303,20 @@ async function addPayment(l) {
   const cur = (prompt('Devise : USD ou CDF ?', 'USD') || 'USD').toUpperCase(); if (!['USD', 'CDF'].includes(cur)) return toast('Devise invalide');
   const method = prompt('Moyen (M-Pesa, Airtel Money, Orange Money, Cash…) :', 'M-Pesa') || 'Autre';
   const { error } = await sb.from('payments').insert({ license_id: l.id, customer_id: l.customer_id, amount, currency: cur, method: method.slice(0, 30), reference: '' });
-  if (error) return toast(errMsg(error)); toast('Paiement enregistré'); refresh();
+  if (error) return toast(errMsg(error)); toast('Paiement enregistré'); logA('payment_add', l.code, `${amount} ${cur} · ${method}`); refresh();
 }
 async function approveOrder(o) {
   if (!confirm(`Valider ${money(o.amount, o.currency)} reçu via ${o.network} (réf. ${o.txn_ref}) ? Le code sera créé et envoyé à l'application du client.`)) return;
   const { data, error } = await sb.rpc('approve_order', { p_order: o.id });
   if (error) return toast(errMsg(error));
+  logA('order_approve', o.ref, `${money(o.amount, o.currency)} · ${o.network}`);
   state.created = { name: o.payer_name, phone: o.payer_phone, code: data.code, exp: data.expires_at }; state.tab = 'new';
   await loadAll(); renderMain(); toast('Commande validée ✓ : le client reçoit son code dans l\'application');
 }
 async function rejectOrder(o) {
   if (!confirm('Rejeter cette commande (paiement non reçu ou faux) ?')) return;
   const { error } = await sb.from('orders').update({ status: 'rejected', decided_at: new Date().toISOString() }).eq('id', o.id);
-  if (error) return toast(errMsg(error)); toast('Commande rejetée'); refresh();
+  if (error) return toast(errMsg(error)); toast('Commande rejetée'); logA('order_reject', o.ref, `${money(o.amount, o.currency)} · ${o.network}`); refresh();
 }
 async function createLicense(f) {
   const name = f.name.value.trim(); if (!name) return toast('Le nom du client est obligatoire');
@@ -332,9 +334,20 @@ async function createLicense(f) {
   if (!lic) return toast('Impossible de générer un code, réessayez');
   const amt = Number(String(f.amount.value).replace(',', '.'));
   if (amt > 0) await sb.from('payments').insert({ license_id: lic.id, customer_id: c.data.id, amount: amt, currency: f.currency.value, method: f.method.value, reference: f.ref.value.trim().slice(0, 80) });
+  logA('license_create', code, `${name} · jusqu'au ${exp}`);
   state.created = { name, phone: f.phone.value.trim(), code, exp }; await loadAll(); renderMain();
 }
 
+/** Reçu à envoyer au client (WhatsApp) : client, code, validité et dernier paiement. */
+function receiptMessage(l) {
+  const c = l.customers || {}; const pays = state.payments.filter((p) => p.license_id === l.id).sort((a, b) => String(b.paid_at).localeCompare(String(a.paid_at)));
+  const p = pays[0];
+  const lines = ['*REÇU ÉCHÉANCE PRO*', c.name ? `Client : ${c.name}` : null, `Code de licence : ${l.code}`,
+    `Valable : ${l.expires_at ? "jusqu'au " + fr(l.expires_at) : 'à vie'}`,
+    p ? `Paiement : ${money(p.amount, p.currency)} via ${p.method} le ${fr(String(p.paid_at).slice(0, 10))}` : null,
+    `Reçu n° ${String(l.id).slice(0, 8).toUpperCase()}`, '', 'Merci pour votre confiance. Studio One'];
+  return lines.filter((x) => x !== null).join('\n');
+}
 async function purgeDeleted() {
   if (!(await confirmSensitive())) return;
   if (!confirm('Supprimer définitivement les comptes dont le délai de 14 jours est écoulé ? Cette action est irréversible.')) return;
@@ -472,6 +485,7 @@ function licCard(l) {
     h('div', { class: 'acts' },
       h('button', { class: 'sm', onclick: () => copy(l.code) }, 'Copier le code'),
       c.phone ? h('button', { class: 'sm p', onclick: () => window.open(waLink(c.phone, msg), '_blank', 'noopener') }, 'WhatsApp') : null,
+      c.phone ? h('button', { class: 'sm', onclick: () => window.open(waLink(c.phone, receiptMessage(l)), '_blank', 'noopener') }, 'Reçu') : h('button', { class: 'sm', onclick: () => copy(receiptMessage(l)) }, 'Copier le reçu'),
       h('button', { class: 'sm', onclick: () => extend(l, 1) }, '+1 mois'), h('button', { class: 'sm', onclick: () => extend(l, 3) }, '+3 mois'), h('button', { class: 'sm', onclick: () => extend(l, 12) }, '+12 mois'),
       h('button', { class: 'sm', onclick: () => addPayment(l) }, 'Paiement'),
       dev ? h('button', { class: 'sm', onclick: () => resetDevices(l) }, 'Libérer appareils') : null,
@@ -575,7 +589,7 @@ const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août'
 function monthsBack(n) { const d = new Date(); d.setDate(1); const out = []; for (let i = n - 1; i >= 0; i--) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push({ key: `${t.getFullYear()}-${pad(t.getMonth() + 1)}`, label: MOIS[t.getMonth()] }); } return out; }
 function weeksBack(n) { const out = []; const now = Date.now(); for (let i = n - 1; i >= 0; i--) { const end = now - i * 7 * 864e5, start = end - 7 * 864e5; const d = new Date(end); out.push({ start, end, label: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}` }); } return out; }
 function agoShort(v) { const m = Math.max(0, Math.round((Date.now() - new Date(v)) / 60000)); return m < 1 ? "à l'instant" : m < 60 ? `il y a ${m} min` : m < 1440 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`; }
-const ACT = { ban: ['⛔', 'a bloqué'], unban: ['✅', 'a rétabli'], delete_user: ['🗑️', 'a supprimé le compte'], setting: ['⚙️', 'a modifié le réglage'], login: ['🔐', 'connexion'] };
+const ACT = { license_create: ['🔑', 'a créé la licence'], license_extend: ['⏩', 'a prolongé la licence'], license_revoke: ['⛔', 'a révoqué la licence'], license_activate: ['✅', 'a réactivé la licence'], license_release: ['📱', 'a libéré les appareils de'], payment_add: ['💰', 'a enregistré un paiement'], order_approve: ['🧾', 'a validé la commande'], order_reject: ['🚫', 'a rejeté la commande'], ban: ['⛔', 'a bloqué'], unban: ['✅', 'a rétabli'], delete_user: ['🗑️', 'a supprimé le compte'], setting: ['⚙️', 'a modifié le réglage'], login: ['🔐', 'connexion'] };
 
 function viewDash() {
   const c = { active: 0, soon: 0, expired: 0, revoked: 0 }; for (const l of state.licenses) { const k = status(l).k; c[k]++; }
