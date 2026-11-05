@@ -267,6 +267,8 @@ async function loadAll() {
   if (!b.error) state.payments = b.data || [];
   const o = await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(100);
   if (!o.error) state.orders = o.data || [];
+  const lk = await sb.rpc('admin_license_links');
+  state.links = lk.error ? {} : Object.fromEntries((lk.data || []).map((r) => [r.license_id, r.email]));
   const u = await sb.rpc('admin_users');
   state.users = u.error ? null : (u.data || []);
   const au = await sb.from('admin_audit').select('*').order('at', { ascending: false }).limit(60);
@@ -291,6 +293,11 @@ async function setStatus(l, st) {
   if (st === 'revoked' && !confirm('Révoquer cette licence ? Elle cessera de fonctionner à la prochaine vérification.')) return;
   const { error } = await sb.from('licenses').update({ status: st }).eq('id', l.id);
   if (error) return toast(errMsg(error)); toast(st === 'revoked' ? 'Licence révoquée' : 'Licence réactivée'); logA(st === 'revoked' ? 'license_revoke' : 'license_activate', l.code); refresh();
+}
+async function unlinkLic(l) {
+  if (!confirm('Délier cette licence du compte ' + (state.links[l.id] || '') + ' ? Ses téléphones perdront PRO à leur prochaine vérification et la licence pourra être liée à un autre compte.')) return;
+  const { error } = await sb.rpc('admin_unlink_license', { p_license: l.id });
+  if (error) return toast(errMsg(error)); toast('Licence déliée'); refresh();
 }
 async function resetDevices(l) {
   if (!confirm('Libérer tous les appareils de cette licence ? Le client pourra la réactiver sur son nouveau téléphone.')) return;
@@ -482,6 +489,7 @@ function licCard(l) {
     h('div', { class: 'top' }, h('b', {}, c.name || 'Sans client'), h('span', { class: 'badge ' + s.c }, s.t)),
     h('div', { class: 'code' }, l.code),
     h('div', { class: 'muted' }, `${c.phone ? c.phone + ' · ' : ''}Valable ${l.expires_at ? "jusqu'au " + fr(l.expires_at) : 'à vie'} · Appareils ${dev}/${l.max_devices}`),
+    state.links && state.links[l.id] ? h('div', { class: 'muted' }, '🔗 Compte lié : ' + state.links[l.id]) : null,
     h('div', { class: 'acts' },
       h('button', { class: 'sm', onclick: () => copy(l.code) }, 'Copier le code'),
       c.phone ? h('button', { class: 'sm p', onclick: () => window.open(waLink(c.phone, msg), '_blank', 'noopener') }, 'WhatsApp') : null,
@@ -489,6 +497,7 @@ function licCard(l) {
       h('button', { class: 'sm', onclick: () => extend(l, 1) }, '+1 mois'), h('button', { class: 'sm', onclick: () => extend(l, 3) }, '+3 mois'), h('button', { class: 'sm', onclick: () => extend(l, 12) }, '+12 mois'),
       h('button', { class: 'sm', onclick: () => addPayment(l) }, 'Paiement'),
       dev ? h('button', { class: 'sm', onclick: () => resetDevices(l) }, 'Libérer appareils') : null,
+      state.links && state.links[l.id] ? h('button', { class: 'sm', onclick: () => unlinkLic(l) }, 'Délier du compte') : null,
       l.status === 'active' ? h('button', { class: 'sm d', onclick: () => setStatus(l, 'revoked') }, 'Révoquer') : h('button', { class: 'sm', onclick: () => setStatus(l, 'active') }, 'Réactiver')));
 }
 function orderCard(o) {
@@ -589,7 +598,7 @@ const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août'
 function monthsBack(n) { const d = new Date(); d.setDate(1); const out = []; for (let i = n - 1; i >= 0; i--) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push({ key: `${t.getFullYear()}-${pad(t.getMonth() + 1)}`, label: MOIS[t.getMonth()] }); } return out; }
 function weeksBack(n) { const out = []; const now = Date.now(); for (let i = n - 1; i >= 0; i--) { const end = now - i * 7 * 864e5, start = end - 7 * 864e5; const d = new Date(end); out.push({ start, end, label: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}` }); } return out; }
 function agoShort(v) { const m = Math.max(0, Math.round((Date.now() - new Date(v)) / 60000)); return m < 1 ? "à l'instant" : m < 60 ? `il y a ${m} min` : m < 1440 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`; }
-const ACT = { license_create: ['🔑', 'a créé la licence'], license_extend: ['⏩', 'a prolongé la licence'], license_revoke: ['⛔', 'a révoqué la licence'], license_activate: ['✅', 'a réactivé la licence'], license_release: ['📱', 'a libéré les appareils de'], payment_add: ['💰', 'a enregistré un paiement'], order_approve: ['🧾', 'a validé la commande'], order_reject: ['🚫', 'a rejeté la commande'], ban: ['⛔', 'a bloqué'], unban: ['✅', 'a rétabli'], delete_user: ['🗑️', 'a supprimé le compte'], setting: ['⚙️', 'a modifié le réglage'], login: ['🔐', 'connexion'] };
+const ACT = { license_create: ['🔑', 'a créé la licence'], license_extend: ['⏩', 'a prolongé la licence'], license_revoke: ['⛔', 'a révoqué la licence'], license_activate: ['✅', 'a réactivé la licence'], license_release: ['📱', 'a libéré les appareils de'], unlink_license: ['🔗', 'a délié du compte la licence'], payment_add: ['💰', 'a enregistré un paiement'], order_approve: ['🧾', 'a validé la commande'], order_reject: ['🚫', 'a rejeté la commande'], ban: ['⛔', 'a bloqué'], unban: ['✅', 'a rétabli'], delete_user: ['🗑️', 'a supprimé le compte'], setting: ['⚙️', 'a modifié le réglage'], login: ['🔐', 'connexion'] };
 
 function viewDash() {
   const c = { active: 0, soon: 0, expired: 0, revoked: 0 }; for (const l of state.licenses) { const k = status(l).k; c[k]++; }
