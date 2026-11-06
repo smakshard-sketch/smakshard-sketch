@@ -1,0 +1,19 @@
+/* Pages légales d'ÉCHÉANCE : lisibles, claires/sombres, sans script. */
+:root { --bg: #f5f7ff; --card: #ffffff; --text: #101a3a; --muted: #4a5578; --line: #d8def2; --link: #2c3a9a; --accent: #2c3a9a; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0b1030; --card: #141a42; --text: #eef1ff; --muted: #b3bbe0; --line: #2a3270; --link: #9db0ff; --accent: #9db0ff; } }
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background-color: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.legal { max-width: 720px; margin: 0 auto; padding: 16px 16px 48px; }
+.legal-brand { margin: 0 0 8px; font-weight: 700; }
+.legal a { color: var(--link); text-underline-offset: 2px; overflow-wrap: anywhere; }
+.legal-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+.legal-nav a { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background-color: var(--card); color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600; }
+.legal-nav a[aria-current="page"] { background-color: var(--accent); border-color: var(--accent); color: var(--bg); }
+h1 { font-size: 1.7rem; line-height: 1.2; margin: 0 0 4px; }
+h2 { font-size: 1.15rem; margin: 28px 0 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+h3 { font-size: 1rem; margin: 16px 0 4px; color: var(--muted); }
+p, li { margin: 6px 0; }
+ul { padding-left: 22px; }
+.legal-date { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+.legal-intro { background-color: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
