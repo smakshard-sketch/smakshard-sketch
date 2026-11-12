@@ -1,0 +1,18 @@
+{
+  "version": "1.23.0",
+  "notes": "Cloche de notifications, lecture des SMS Mobile Money, nouvel écran de démarrage.",
+  "notes_en": "Notification bell, Mobile Money SMS reading, new start screen.",
+  "url": "https://smakshard-sketch.github.io/smakshard-sketch/",
+  "announcements": [
+    {
+      "id": "bienvenue-2026-11",
+      "title": "ÉCHÉANCE évolue",
+      "title_en": "ÉCHÉANCE keeps improving",
+      "body": "Retrouvez ici les nouveautés et les astuces.",
+      "body_en": "Find news and tips here.",
+      "url": "https://smakshard-sketch.github.io/smakshard-sketch/",
+      "action": "Voir",
+      "action_en": "View"
+    }
+  ]
+}
