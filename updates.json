@@ -1,18 +1,10 @@
 {
-  "version": "1.23.0",
-  "notes": "Cloche de notifications, lecture des SMS Mobile Money, nouvel écran de démarrage.",
-  "notes_en": "Notification bell, Mobile Money SMS reading, new start screen.",
-  "url": "https://smakshard-sketch.github.io/smakshard-sketch/",
+  "version": "1.24.2",
+  "url": "https://smakshard-sketch.github.io/smakshard-sketch/telecharger.html",
+  "apk": "https://github.com/smakshard-sketch/smakshard-sketch/releases/latest",
+  "notes": "Synchronisation sans fermer l'app, alerte « nouvel appareil », accueil plus léger, nouvelle police.",
+  "notes_en": "Sync without closing the app, new-device alert, lighter home screen, new font.",
   "announcements": [
-    {
-      "id": "bienvenue-2026-11",
-      "title": "ÉCHÉANCE évolue",
-      "title_en": "ÉCHÉANCE keeps improving",
-      "body": "Retrouvez ici les nouveautés et les astuces.",
-      "body_en": "Find news and tips here.",
-      "url": "https://smakshard-sketch.github.io/smakshard-sketch/",
-      "action": "Voir",
-      "action_en": "View"
-    }
+    { "id": "bienvenue-2026-11", "title": "Bienvenue sur ÉCHÉANCE", "title_en": "Welcome to ÉCHÉANCE", "body": "Retrouvez les tutoriels sur notre page.", "body_en": "Find the tutorials on our page.", "url": "https://smakshard-sketch.github.io/smakshard-sketch/telecharger.html", "action": "Ouvrir", "action_en": "Open" }
   ]
 }
