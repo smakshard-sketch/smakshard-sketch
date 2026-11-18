@@ -1,0 +1,19 @@
+{
+  "version": "1.25.1",
+  "url": "https://smakshard-sketch.github.io/smakshard-sketch/telecharger.html",
+  "apk": "https://github.com/smakshard-sketch/smakshard-sketch/releases/latest/download/Echeance.apk",
+  "notes": "Accès aux mises à jour depuis les Réglages, écran de démarrage avec la date, nouvelle police.",
+  "notes_en": "Updates link in Settings, date start screen, new font.",
+  "announcements": [
+    {
+      "id": "bienvenue-2026-11",
+      "title": "Bienvenue sur ÉCHÉANCE",
+      "title_en": "Welcome to ÉCHÉANCE",
+      "body": "Retrouvez les tutoriels sur notre page.",
+      "body_en": "Find the tutorials on our page.",
+      "url": "https://smakshard-sketch.github.io/smakshard-sketch/telecharger.html",
+      "action": "Ouvrir",
+      "action_en": "Open"
+    }
+  ]
+}
