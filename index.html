@@ -96,7 +96,7 @@ body{background:radial-gradient(900px 480px at 85% -10%,rgba(124,92,255,.16),tra
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.100.0/dist/umd/supabase.min.js"></script>
 <script>
 /* ---------- Réglages (vous pouvez les remplir ici, ou au premier lancement dans la page) ---------- */
-const CFG = { supabaseUrl: 'https://oydwnxpejqwdngkylgwc.supabase.co', supabaseKey: 'sb_publishable_u6bfuVBc5gkXHJ0XUTkqYQ_kB6DzzIH', countryCode: '243', appName: 'ÉCHÉANCE PRO' };
+const CFG = { supabaseUrl: '', supabaseKey: '', countryCode: '243', appName: 'ÉCHÉANCE PRO' };
 
 const $app = document.getElementById('app');
 let sb = null, state = { tab: 'dash', filter: 'all', q: '', licenses: [], payments: [], orders: [], users: [], loading: false, created: null, audit: [], settings: {}, me: null, ufilter: 'all', revCur: 'USD', lastLoad: 0, tbl: 'customers', tblRows: [], tblFor: '', tblErr: '', tq: '', uq: '' };
@@ -598,7 +598,7 @@ const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août'
 function monthsBack(n) { const d = new Date(); d.setDate(1); const out = []; for (let i = n - 1; i >= 0; i--) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push({ key: `${t.getFullYear()}-${pad(t.getMonth() + 1)}`, label: MOIS[t.getMonth()] }); } return out; }
 function weeksBack(n) { const out = []; const now = Date.now(); for (let i = n - 1; i >= 0; i--) { const end = now - i * 7 * 864e5, start = end - 7 * 864e5; const d = new Date(end); out.push({ start, end, label: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}` }); } return out; }
 function agoShort(v) { const m = Math.max(0, Math.round((Date.now() - new Date(v)) / 60000)); return m < 1 ? "à l'instant" : m < 60 ? `il y a ${m} min` : m < 1440 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`; }
-const ACT = { license_create: ['🔑', 'a créé la licence'], license_extend: ['⏩', 'a prolongé la licence'], license_revoke: ['⛔', 'a révoqué la licence'], license_activate: ['✅', 'a réactivé la licence'], license_release: ['📱', 'a libéré les appareils de'], unlink_license: ['🔗', 'a délié du compte la licence'], payment_add: ['💰', 'a enregistré un paiement'], order_approve: ['🧾', 'a validé la commande'], order_reject: ['🚫', 'a rejeté la commande'], ban: ['⛔', 'a bloqué'], unban: ['✅', 'a rétabli'], delete_user: ['🗑️', 'a supprimé le compte'], setting: ['⚙️', 'a modifié le réglage'], login: ['🔐', 'connexion'] };
+const ACT = { release_publish: ['🚀', 'a publié la version'], news_add: ['📣', 'a ajouté l\'annonce'], news_remove: ['🗑️', 'a retiré l\'annonce'], license_create: ['🔑', 'a créé la licence'], license_extend: ['⏩', 'a prolongé la licence'], license_revoke: ['⛔', 'a révoqué la licence'], license_activate: ['✅', 'a réactivé la licence'], license_release: ['📱', 'a libéré les appareils de'], unlink_license: ['🔗', 'a délié du compte la licence'], payment_add: ['💰', 'a enregistré un paiement'], order_approve: ['🧾', 'a validé la commande'], order_reject: ['🚫', 'a rejeté la commande'], ban: ['⛔', 'a bloqué'], unban: ['✅', 'a rétabli'], delete_user: ['🗑️', 'a supprimé le compte'], setting: ['⚙️', 'a modifié le réglage'], login: ['🔐', 'connexion'] };
 
 function viewDash() {
   const c = { active: 0, soon: 0, expired: 0, revoked: 0 }; for (const l of state.licenses) { const k = status(l).k; c[k]++; }
@@ -636,6 +636,46 @@ function viewDash() {
       h('div', { class: 'card' }, h('div', { class: 'ctitle' }, h('b', {}, 'À relancer')), soon.length ? soon.map((l) => h('div', { class: 'list-row' }, h('div', {}, h('b', {}, (l.customers || {}).name || l.code), h('div', { class: 'muted' }, `Expire le ${fr(l.expires_at)}`)),
         (l.customers || {}).phone ? h('button', { class: 'sm p', onclick: () => window.open(waLink(l.customers.phone, `Bonjour ${l.customers.name}, votre abonnement ${CFG.appName} expire le ${fr(l.expires_at)}. Souhaitez-vous le renouveler ?`), '_blank', 'noopener') }, 'Relancer') : null)) : h('p', { class: 'muted' }, 'Personne à relancer.')),
       h('div', { class: 'card feed' }, h('div', { class: 'ctitle' }, h('b', {}, 'Activité récente')), feed.length ? feed.map((f) => h('div', { class: 'list-row' }, h('div', { class: 'l' }, h('span', { class: 'dot' }, f.ico), h('div', {}, h('b', {}, f.t), h('div', { class: 'muted' }, f.s))), h('span', { class: 'muted' }, agoShort(f.at)))) : h('p', { class: 'muted' }, 'Rien pour le moment.'))));
+}
+
+/* ---------- versions et annonces (réservé aux administrateurs) ---------- */
+async function loadVersions() {
+  try { const r = await sb.rpc('admin_releases'); state.vers = r.error ? { releases: [], news: [], err: errMsg(r.error) } : (r.data || { releases: [], news: [] }); }
+  catch (e) { state.vers = { releases: [], news: [], err: errMsg(e) }; }
+}
+function viewVersions() {
+  const v = state.vers || { releases: [], news: [] };
+  const f = { version: h('input', { placeholder: 'ex. 1.24.2', inputmode: 'decimal' }), notes: h('textarea', { rows: 2, maxlength: 400, placeholder: 'Nouveautés (français)' }),
+    notesEn: h('textarea', { rows: 2, maxlength: 400, placeholder: 'What is new (English)' }), apk: h('input', { type: 'url', placeholder: 'Lien du téléchargement (https://…) — facultatif' }) };
+  const n = { title: h('input', { maxlength: 90, placeholder: 'Titre (français)' }), body: h('textarea', { rows: 2, maxlength: 400, placeholder: 'Message (français)' }),
+    titleEn: h('input', { maxlength: 90, placeholder: 'Title (English)' }), bodyEn: h('textarea', { rows: 2, maxlength: 400, placeholder: 'Message (English)' }),
+    url: h('input', { type: 'url', placeholder: 'Lien (https://…) — facultatif' }), action: h('input', { maxlength: 30, placeholder: 'Texte du bouton (ex. Ouvrir)' }), actionEn: h('input', { maxlength: 30, placeholder: 'Button text (e.g. Open)' }) };
+  const publish = async () => {
+    const ver = f.version.value.trim(); if (!/^\d+(\.\d+){1,3}$/.test(ver)) return toast('Version invalide (ex. 1.24.2)');
+    if (f.apk.value.trim() && !/^https:\/\//.test(f.apk.value.trim())) return toast('Le lien doit commencer par https://');
+    if (!(await confirmSensitive())) return;
+    const r = await sb.rpc('admin_publish_release', { p_version: ver, p_notes: f.notes.value.trim(), p_notes_en: f.notesEn.value.trim(), p_apk_url: f.apk.value.trim() });
+    if (r.error) return toast(errMsg(r.error)); toast('Version publiée ✓'); await loadVersions(); renderMain();
+  };
+  const addNews = async () => {
+    if (!n.title.value.trim()) return toast('Ajoutez un titre');
+    if (n.url.value.trim() && !/^https:\/\//.test(n.url.value.trim())) return toast('Le lien doit commencer par https://');
+    if (!(await confirmSensitive())) return;
+    const r = await sb.rpc('admin_add_news', { p_title: n.title.value.trim(), p_body: n.body.value.trim(), p_title_en: n.titleEn.value.trim(), p_body_en: n.bodyEn.value.trim(), p_url: n.url.value.trim(), p_action: n.action.value.trim(), p_action_en: n.actionEn.value.trim() });
+    if (r.error) return toast(errMsg(r.error)); toast('Annonce publiée ✓'); await loadVersions(); renderMain();
+  };
+  const removeNews = async (id) => { if (!(await confirmSensitive())) return; const r = await sb.rpc('admin_remove_news', { p_id: id }); if (r.error) return toast(errMsg(r.error)); toast('Annonce retirée'); await loadVersions(); renderMain(); };
+  return h('div', {},
+    v.err ? h('p', { class: 'err', role: 'alert' }, "Impossible de charger : exécutez d'abord cloud/versions-v1.sql dans Supabase (" + v.err + ')') : null,
+    h('div', { class: 'card' }, h('h2', {}, 'Publier une nouvelle version'),
+      h('p', { class: 'muted' }, "Les applications et la page de téléchargement affichent aussitôt « Nouvelle version » aux utilisateurs qui ont une version plus ancienne. Mettez d'abord le fichier APK dans la Release GitHub."),
+      f.version, f.notes, f.notesEn, f.apk, h('div', { class: 'acts' }, h('button', { class: 'p', onclick: publish }, 'Publier'))),
+    h('div', { class: 'card' }, h('h2', {}, 'Ajouter une annonce'), h('p', { class: 'muted' }, "Apparaît dans la cloche de l'app et sur la page web (5 dernières)."),
+      n.title, n.body, n.titleEn, n.bodyEn, n.url, n.action, n.actionEn, h('div', { class: 'acts' }, h('button', { class: 'p', onclick: addNews }, 'Publier'))),
+    h('div', { class: 'card' }, h('h2', {}, 'Versions publiées'),
+      v.releases.length ? v.releases.map((r) => h('div', { class: 'list-row' }, h('div', { class: 'l' }, h('div', {}, h('b', {}, r.version), h('div', { class: 'muted' }, (r.notes || '—').slice(0, 90)))), h('span', { class: 'muted' }, new Date(r.published_at).toLocaleDateString('fr-FR')))) : h('p', { class: 'muted' }, 'Aucune version publiée.')),
+    h('div', { class: 'card' }, h('h2', {}, 'Annonces en ligne'),
+      v.news.length ? v.news.map((a) => h('div', { class: 'list-row' }, h('div', { class: 'l' }, h('div', {}, h('b', {}, a.title), h('div', { class: 'muted' }, (a.body || '').slice(0, 90)))), h('button', { class: 'sm', onclick: () => removeNews(a.id) }, 'Retirer'))) : h('p', { class: 'muted' }, 'Aucune annonce.')));
 }
 
 /* ---------- journal ---------- */
@@ -718,11 +758,11 @@ function viewSecurity() {
 /* ---------- écrans ---------- */
 function renderMain() {
   const pend = state.orders.filter((o) => o.status === 'pending').length;
-  const tabs = [['dash', 'Tableau'], ['orders', pend ? `Commandes (${pend})` : 'Commandes'], ['licences', 'Licences'], ['new', 'Nouvelle'], ['payments', 'Paiements'], ['users', 'Comptes'], ['tables', 'Données'], ['journal', 'Journal'], ['security', 'Sécurité']];
+  const tabs = [['dash', 'Tableau'], ['orders', pend ? `Commandes (${pend})` : 'Commandes'], ['licences', 'Licences'], ['new', 'Nouvelle'], ['payments', 'Paiements'], ['users', 'Comptes'], ['tables', 'Données'], ['versions', 'Versions'], ['journal', 'Journal'], ['security', 'Sécurité']];
   $app.replaceChildren(
     h('div', { class: 'top' }, brand('Administration'), h('button', { class: 'sm', onclick: () => lock('') }, 'Verrouiller')),
-    h('div', { class: 'tabs' }, tabs.map(([k, t]) => h('button', { class: state.tab === k ? 'on' : '', onclick: async () => { state.tab = k; state.created = null; if (k === 'tables') await loadTable(); if (k === 'security') await loadFactors(); renderMain(); } }, t))),
-    state.tab === 'orders' ? viewOrders() : state.tab === 'licences' ? viewLicenses() : state.tab === 'new' ? viewNew() : state.tab === 'payments' ? viewPayments() : state.tab === 'users' ? viewUsers() : state.tab === 'tables' ? viewTables() : state.tab === 'journal' ? viewJournal() : state.tab === 'security' ? viewSecurity() : viewDash());
+    h('div', { class: 'tabs' }, tabs.map(([k, t]) => h('button', { class: state.tab === k ? 'on' : '', onclick: async () => { state.tab = k; state.created = null; if (k === 'tables') await loadTable(); if (k === 'versions') await loadVersions(); if (k === 'security') await loadFactors(); renderMain(); } }, t))),
+    state.tab === 'orders' ? viewOrders() : state.tab === 'licences' ? viewLicenses() : state.tab === 'new' ? viewNew() : state.tab === 'payments' ? viewPayments() : state.tab === 'users' ? viewUsers() : state.tab === 'tables' ? viewTables() : state.tab === 'versions' ? viewVersions() : state.tab === 'journal' ? viewJournal() : state.tab === 'security' ? viewSecurity() : viewDash());
 }
 boot();
 </script>
