@@ -15,15 +15,6 @@
       "action": "Ouvrir",
       "action_en": "Open"
     }
-    {
-      "id": "Mis à jour ",
-      "title": "FONCTIONNALITÉS ÉCHÉANCE ici",
-      "title_en": "📥",
-      "body": "Retrouvez vos nouvelles fonctionnalités..",
-      "body_en": "Find your new fonction.",
-      "url": "https://smakshard-sketch.github.io/smakshard-sketch/telecharger.html",
-      "action": "Ouvrir",
-      "action_en": "Open"
-    }
+    
   ]
 }
